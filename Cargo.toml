@@ -21,5 +21,8 @@ maintenance = { status = "actively-developed" }
 [features]
 default = ["std"]
 std = []
-nightly = []
+intrinsics = []
 panic_abort = []
+
+[dependencies]
+abort = "0.1.2"

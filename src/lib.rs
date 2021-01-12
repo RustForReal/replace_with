@@ -5,7 +5,7 @@
 //! <a href="https://crates.io/crates/replace_with">📦&nbsp;&nbsp;Crates.io</a>&nbsp;&nbsp;│&nbsp;&nbsp;<a href="https://github.com/alecmocatta/replace_with">📑&nbsp;&nbsp;GitHub</a>&nbsp;&nbsp;│&nbsp;&nbsp;<a href="https://constellation.zulipchat.com/#narrow/stream/213236-subprojects">💬&nbsp;&nbsp;Chat</a>
 //! </strong></p>
 //!
-//! This crate provides the function [`replace_with()`], which is like [`std::mem::replace()`]
+//! This crate provides the function [`replace_with()`], which is like [`core::mem::replace()`]
 //! except it allows the replacement value to be mapped from the original value.
 //!
 //! See [RFC 1736](https://github.com/rust-lang/rfcs/pull/1736) for a lot of discussion as to its
@@ -13,7 +13,7 @@
 //! exist yet, so this crate is my interim solution.
 //!
 //! It's very akin to [`take_mut`](https://github.com/Sgeo/take_mut), though uses `Drop` instead of
-//! [`std::panic::catch_unwind()`] to react to unwinding, which avoids the optimisation barrier of
+//! [`core::panic::catch_unwind()`] to react to unwinding, which avoids the optimisation barrier of
 //! calling the `extern "C" __rust_maybe_catch_panic()`. As such it's up to ∞x faster. The API also
 //! attempts to make slightly more explicit the behavior on panic – [`replace_with()`] accepts two
 //! closures such that aborting in the "standard case" where the mapping closure (`FnOnce(T) -> T`)
@@ -53,7 +53,7 @@
 //!     B(String),
 //! }
 //!
-//! # #[cfg(any(feature = "std", feature = "nightly"))]
+//! # #[cfg(any(feature = "core", feature = "nightly"))]
 //! impl States {
 //!     fn poll(&mut self) {
 //!         replace_with_or_abort(self, |self_| match self_ {
@@ -66,9 +66,9 @@
 //!
 //! Huzzah!
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![cfg_attr(
-	all(not(feature = "std"), feature = "nightly"),
+	all(not(feature = "core"), feature = "nightly"),
 	feature(core_intrinsics)
 )]
 #![doc(html_root_url = "https://docs.rs/replace_with/0.1.7")]
@@ -85,10 +85,8 @@
 )]
 // #![allow(clippy::inline_always)]
 
-#[cfg(not(feature = "std"))]
-use core as std;
-
-use std::{mem, ptr};
+use abort::abort;
+use core::{mem, ptr};
 
 struct OnDrop<F: FnOnce()>(mem::ManuallyDrop<F>);
 impl<F: FnOnce()> Drop for OnDrop<F> {
@@ -228,7 +226,7 @@ pub fn replace_with_or_default<T: Default, F: FnOnce(T) -> T>(dest: &mut T, f: F
 ///     B(String),
 /// }
 ///
-/// # #[cfg(any(feature = "std", feature = "nightly"))]
+/// # #[cfg(any(feature = "core", feature = "nightly"))]
 /// impl States {
 ///     fn poll(&mut self) {
 ///         replace_with_or_abort(self, |self_| match self_ {
@@ -239,15 +237,15 @@ pub fn replace_with_or_default<T: Default, F: FnOnce(T) -> T>(dest: &mut T, f: F
 /// }
 /// ```
 #[inline]
-#[cfg(feature = "std")]
+#[cfg(not(feature = "nightly"))]
 pub fn replace_with_or_abort<T, F: FnOnce(T) -> T>(dest: &mut T, f: F) {
-	replace_with(dest, || std::process::abort(), f);
+	replace_with(dest, || abort(), f);
 }
 
 #[inline]
-#[cfg(all(not(feature = "std"), feature = "nightly"))]
+#[cfg(feature = "nightly")]
 pub fn replace_with_or_abort<T, F: FnOnce(T) -> T>(dest: &mut T, f: F) {
-	replace_with(dest, || unsafe { std::intrinsics::abort() }, f);
+	replace_with(dest, || unsafe { core::intrinsics::abort() }, f);
 }
 
 /// Temporarily takes ownership of a value at a mutable location, and replace it with a new value
@@ -414,15 +412,15 @@ pub fn replace_with_or_default_and_return<T: Default, U, F: FnOnce(T) -> (U, T)>
 /// }
 /// ```
 #[inline]
-#[cfg(feature = "std")]
+#[cfg(not(feature = "nightly"))]
 pub fn replace_with_or_abort_and_return<T, U, F: FnOnce(T) -> (U, T)>(dest: &mut T, f: F) -> U {
-	replace_with_and_return(dest, || std::process::abort(), f)
+	replace_with_and_return(dest, || abort(), f)
 }
 
 #[inline]
-#[cfg(all(not(feature = "std"), feature = "nightly"))]
+#[cfg(feature = "nightly")]
 pub fn replace_with_or_abort_and_return<T, U, F: FnOnce(T) -> (U, T)>(dest: &mut T, f: F) -> U {
-	replace_with_and_return(dest, || unsafe { std::intrinsics::abort() }, f)
+	replace_with_and_return(dest, || unsafe { core::intrinsics::abort() }, f)
 }
 
 /// Temporarily takes ownership of a value at a mutable location, and replace it with a new value
@@ -473,7 +471,6 @@ pub fn replace_with_or_abort_and_return<T, U, F: FnOnce(T) -> (U, T)>(dest: &mut
 /// }
 /// ```
 #[inline]
-#[cfg(feature = "std")]
 #[cfg(feature = "panic_abort")]
 pub unsafe fn replace_with_or_abort_and_return_unchecked<T, U, F: FnOnce(T) -> (U, T)>(
 	dest: &mut T, f: F,
@@ -485,6 +482,8 @@ pub unsafe fn replace_with_or_abort_and_return_unchecked<T, U, F: FnOnce(T) -> (
 
 #[cfg(test)]
 mod test {
+        extern crate std;
+
 	// These functions copied from https://github.com/Sgeo/take_mut/blob/1bd70d842c6febcd16ec1fe3a954a84032b89f52/src/lib.rs#L102-L147
 
 	// Copyright (c) 2016 Sgeo
@@ -517,18 +516,10 @@ mod test {
 			B,
 		};
 		impl Drop for Foo {
-			#[cfg(feature = "std")]
 			fn drop(&mut self) {
 				match *self {
-					Foo::A => println!("Foo::A dropped"),
-					Foo::B => println!("Foo::B dropped"),
-				}
-			}
-
-			#[cfg(not(feature = "std"))]
-			fn drop(&mut self) {
-				match *self {
-					Foo::A | Foo::B => (),
+					Foo::A => std::println!("Foo::A dropped"),
+					Foo::B => std::println!("Foo::B dropped"),
 				}
 			}
 		}
@@ -555,10 +546,10 @@ mod test {
 		assert_eq!(&quax, &Foo::A);
 	}
 
-	#[cfg(all(feature = "std", not(miri)))] // https://github.com/rust-lang/miri/issues/658
+	#[cfg(all(feature = "core", not(miri)))] // https://github.com/rust-lang/miri/issues/658
 	#[test]
 	fn it_works_recover_panic() {
-		use std::panic;
+		use core::panic;
 
 		#[derive(PartialEq, Eq, Debug)]
 		enum Foo {
